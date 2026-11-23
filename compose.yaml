@@ -1,31 +1,82 @@
-# ※ ①에서는 이 파일을 쓰지 않는다. ①의 DB는 docker run 한 줄로 띄운다 (docs/capstone/01-테스트환경.md 4절).
-#   이 파일은 ②의 출발점: 지금은 db 서비스만 있고, ②에서 migrate·was·web 서비스를 직접 추가해 완성한다.
-# ${...} 값은 같은 폴더의 .env에서 Compose가 자동으로 읽어 채운다. .env는 커밋하지 않는다.
-# 스키마와 초기 데이터는 /docker-entrypoint-initdb.d를 쓰지 않고 Alembic + 시드로 만든다 (RDS에서도 같은 경로).
+# booklog ② — db · migrate · was · web을 한 번에 실행 (Docker Compose)
+#   docker compose up -d        시작 (db 준비 → migrate 완료 → was 시작, web은 독립)
+#   docker compose ps -a        상태 (migrate는 Exited (0)이 정상)
+#   docker compose down         중지 · 삭제 (볼륨은 남음. -v를 붙이면 데이터까지 삭제)
+# ${...} 값은 같은 폴더의 .env에서 Compose가 읽어 채운다 (.env는 커밋하지 않음, 키 목록은 .env.example).
+# 이미지는 미리 빌드한 것을 쓴다: booklog_was · booklog_web 저장소에서 docker build (태그 = 버전).
 
-# 프로젝트 이름 고정. 없으면 폴더 이름(booklog_infra)이 붙어 볼륨이 booklog_infra_pgdata처럼 바뀐다
+# 프로젝트 이름 고정 → 네트워크 booklog_default, 볼륨 booklog_pgdata (①의 docker run과 같은 볼륨)
 name: booklog
+
+# DB 접속 설정 (was · migrate 공통). ③④에서는 일반 값 → ConfigMap, 계정 · 비밀번호 → Secret
+x-db-env: &db-env
+  DB_HOST: db                     # Compose 네트워크 안에서는 서비스 이름이 곧 DNS 이름
+  DB_PORT: "5432"
+  DB_NAME: ${DB_NAME:?DB_NAME이 .env에 필요합니다}
+  DB_USER: ${DB_USER:?DB_USER가 .env에 필요합니다}
+  DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD가 .env에 필요합니다}
+  DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
 
 services:
   db:
-    # 마이너 버전까지 고정 (2026-11-23 최신 18.7). postgres:18은 새 마이너가 나오면 다른 이미지를 가리킨다
-    image: postgres:18.7
+    image: postgres:18.7          # 마이너까지 고정
     environment:
-      # 빈 볼륨에서 처음 시작할 때만 이 계정·DB를 만든다. 이미 데이터가 있으면 무시됨
-      POSTGRES_USER: ${DB_USER:?DB_USER가 .env에 필요합니다}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD가 .env에 필요합니다}
-      POSTGRES_DB: ${DB_NAME:?DB_NAME이 .env에 필요합니다}
-      # POSTGRES_HOST_AUTH_METHOD를 지정하지 않으면 password_encryption 값(PG14+ 기본 scram-sha-256)을 쓴다
-    ports:
-      - "127.0.0.1:5432:5432"  # 이 PC 안에서만 접속 가능 (0.0.0.0으로 열지 않음)
+      # 빈 볼륨에서 처음 시작할 때만 계정 · DB를 만든다. 이미 데이터가 있으면 무시됨
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    # ports 없음: DB는 Compose 네트워크 안(was · migrate)에서만 접근. 확인은 docker compose exec db psql
     volumes:
-      - pgdata:/var/lib/postgresql  # PG18 이미지의 VOLUME 경로 (PGDATA=/var/lib/postgresql/18/docker)
+      - pgdata:/var/lib/postgresql  # PG18 이미지의 VOLUME 경로
     healthcheck:
       # $$ = Compose가 치환하지 않고 컨테이너 안의 셸 변수로 넘김
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # 한 번 실행하고 끝나는 작업: 스키마(Alembic) + 초기 데이터(시드). was와 같은 이미지
+  migrate:
+    image: ${IMAGE_PREFIX-}booklog-was:${WAS_VERSION:-1.0.0}
+    command: ["sh", "-c", "alembic upgrade head && python -m app.seed seed/catalog.yaml"]
+    environment:
+      <<: *db-env
+      DEMO_PASSWORD: ${DEMO_PASSWORD:?DEMO_PASSWORD가 .env에 필요합니다}
+    depends_on:
+      db:
+        condition: service_healthy   # DB가 접속을 받을 수 있을 때 시작
+    restart: "no"
+
+  was:
+    image: ${IMAGE_PREFIX-}booklog-was:${WAS_VERSION:-1.0.0}
+    environment:
+      <<: *db-env
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET이 .env에 필요합니다}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-60}
+      # APP_VERSION은 넣지 않는다: 이미지에 빌드할 때 고정한 값을 그대로 쓴다
+    # ports 없음: 밖에서는 web의 /api를 거쳐서만 접근
+    depends_on:
+      migrate:
+        condition: service_completed_successfully   # 마이그레이션 · 시드가 성공(종료 코드 0)한 뒤 시작
+    healthcheck:
+      # liveness와 같은 기준 (DB를 보지 않음). slim 이미지에 curl이 없어 python으로 요청
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/live', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  web:
+    image: ${IMAGE_PREFIX-}booklog-web:${WEB_VERSION:-1.0.0}
+    environment:
+      WAS_URL: http://was:8000      # Nginx가 요청할 때마다 이 이름을 DNS(Docker 내장 DNS)로 조회
+    ports:
+      - "127.0.0.1:8080:8080"       # 외부 입구는 web 하나 (이 PC 안에서만)
+    # depends_on 없음: was가 아직 없거나 재시작해도 화면은 뜨고 /api만 502 (resolver로 요청 시 조회)
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
 volumes:
   pgdata:
