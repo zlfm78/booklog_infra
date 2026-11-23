@@ -17,7 +17,7 @@
 
 ```
 .env.example        환경 변수 키 목록 (값 없음). cp .env.example .env 후 채움 — .env는 커밋하지 않음
-compose.yaml        ②에서 db · migrate · was · web을 묶을 출발점
+compose.yaml        ② db · migrate · was · web (IMAGE_PREFIX=jeonghyeonseong/ 이면 Docker Hub 이미지)
 scripts/
 └── scenario.sh     모든 단계 공통 테스트 시나리오 (write · verify)
 k8s/                ③부터: Kustomize base + overlays/ec2, overlays/eks
@@ -47,6 +47,6 @@ scripts/scenario.sh <BASE_URL> verify   # S12~S13: 재시작 · 교체 뒤 write
 | 단계 | 상태 |
 |---|---|
 | ① WSL 2 Ubuntu 테스트 환경 | 완료 (write 52/0, DB 컨테이너 교체 전후 verify 13/0) |
-| ② 이미지 빌드 · 컨테이너 테스트 | 진행 예정 |
+| ② 이미지 빌드 · 컨테이너 테스트 | 완료 — Docker Hub `jeonghyeonseong/booklog-was:1.0.0`, `jeonghyeonseong/booklog-web:1.0.0` (`linux/amd64`), `compose.yaml`로 write 52/0 · verify 13/0 |
 | ③ Kubernetes 전환 (EC2 kubeadm) | 진행 예정 |
 | ④ EKS 전환 | 진행 예정 |
