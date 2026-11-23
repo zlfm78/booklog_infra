@@ -1,0 +1,10 @@
+# 비밀 값
+.env
+*.secret.yaml
+kubeconfig
+*.kubeconfig
+# 시나리오 실행 상태 (테스트 계정의 임의 비밀번호 포함)
+scenario-state.json
+# 작업 문서 · 캡처 · 도구 설정 (제출은 Notion. 저장소에는 실행 · 배포에 필요한 파일만)
+docs/
+CLAUDE.md

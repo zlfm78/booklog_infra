@@ -1,0 +1,31 @@
+# ※ ①에서는 이 파일을 쓰지 않는다. ①의 DB는 docker run 한 줄로 띄운다 (docs/capstone/01-테스트환경.md 4절).
+#   이 파일은 ②의 출발점: 지금은 db 서비스만 있고, ②에서 migrate·was·web 서비스를 직접 추가해 완성한다.
+# ${...} 값은 같은 폴더의 .env에서 Compose가 자동으로 읽어 채운다. .env는 커밋하지 않는다.
+# 스키마와 초기 데이터는 /docker-entrypoint-initdb.d를 쓰지 않고 Alembic + 시드로 만든다 (RDS에서도 같은 경로).
+
+# 프로젝트 이름 고정. 없으면 폴더 이름(booklog_infra)이 붙어 볼륨이 booklog_infra_pgdata처럼 바뀐다
+name: booklog
+
+services:
+  db:
+    # 마이너 버전까지 고정 (2026-11-23 최신 18.7). postgres:18은 새 마이너가 나오면 다른 이미지를 가리킨다
+    image: postgres:18.7
+    environment:
+      # 빈 볼륨에서 처음 시작할 때만 이 계정·DB를 만든다. 이미 데이터가 있으면 무시됨
+      POSTGRES_USER: ${DB_USER:?DB_USER가 .env에 필요합니다}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD가 .env에 필요합니다}
+      POSTGRES_DB: ${DB_NAME:?DB_NAME이 .env에 필요합니다}
+      # POSTGRES_HOST_AUTH_METHOD를 지정하지 않으면 password_encryption 값(PG14+ 기본 scram-sha-256)을 쓴다
+    ports:
+      - "127.0.0.1:5432:5432"  # 이 PC 안에서만 접속 가능 (0.0.0.0으로 열지 않음)
+    volumes:
+      - pgdata:/var/lib/postgresql  # PG18 이미지의 VOLUME 경로 (PGDATA=/var/lib/postgresql/18/docker)
+    healthcheck:
+      # $$ = Compose가 치환하지 않고 컨테이너 안의 셸 변수로 넘김
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
