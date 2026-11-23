@@ -1,0 +1,28 @@
+# ③ kubeadm 클러스터 설정 (cp에서: sudo kubeadm init --config kubeadm-config.yaml)
+# 결정과 이유: docs/설계.md 3.2
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: 10.0.1.10        # 고정한 사설 IP로 API 서버를 광고 (공인 IP는 시작할 때마다 바뀜)
+  bindPort: 6443
+nodeRegistration:
+  name: cp
+  criSocket: unix:///run/containerd/containerd.sock
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+kubernetesVersion: v1.36.6
+clusterName: booklog
+networking:
+  podSubnet: 192.168.0.0/16          # Calico IP 풀. VPC(10.0.0.0/16)와 겹치지 않음
+  serviceSubnet: 10.96.0.0/12
+apiServer:
+  certSANs:                          # API 서버 인증서에 들어갈 이름 · 주소
+    - 127.0.0.1                      # WSL에서 SSH 터널(ssh -L 6443:127.0.0.1:6443 cp)로 접속
+    - cp
+    - 10.0.1.10
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cgroupDriver: systemd                # containerd의 SystemdCgroup = true와 맞춤
+serverTLSBootstrap: true             # kubelet serving 인증서를 클러스터 CA로 발급 (CSR 승인 필요) → metrics-server가 TLS 검증 가능
