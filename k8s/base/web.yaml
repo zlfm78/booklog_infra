@@ -43,6 +43,9 @@ spec:
           image: booklog-web
           ports:
             - {name: http, containerPort: 8080}
+          lifecycle:                      # 무중단 롤링: 엔드포인트에서 빠질 시간을 준 뒤 종료 (was.yaml 설명 참고)
+            preStop:
+              exec: {command: ["sleep", "5"]}
           env:
             # Nginx가 요청할 때마다 was Service 이름을 CoreDNS로 조회.
             # Nginx resolver는 /etc/resolv.conf의 search 도메인을 붙이지 않으므로 짧은 이름(was)이 아니라 전체 이름(FQDN)

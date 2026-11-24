@@ -3,6 +3,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
+# 배포할 버전 (롤링 업데이트 · 롤백은 이 태그를 바꿔 apply)
+images:
+  - name: jeonghyeonseong/booklog-was
+    newTag: 1.1.0
 patches:
   - target: {kind: Service, name: web}
     patch: |-

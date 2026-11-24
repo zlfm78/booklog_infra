@@ -68,6 +68,11 @@ spec:
           image: booklog-was
           ports:
             - {name: http, containerPort: 8000}
+          # 무중단 롤링: Pod가 종료될 때 Service 엔드포인트 · 각 노드 kube-proxy 규칙에서 빠지는 데 시간이 걸린다.
+          # 그 사이 들어온 요청을 받도록 5초 기다린 뒤 SIGTERM (uvicorn은 처리 중인 요청을 마치고 종료)
+          lifecycle:
+            preStop:
+              exec: {command: ["sleep", "5"]}
           envFrom:
             - configMapRef: {name: booklog-config}
           env:
