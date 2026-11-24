@@ -1,0 +1,54 @@
+# 티어 분리: web → was → db만 허용 (K8s의 보안 그룹 역할, Calico가 적용)
+# 1) 기본은 모든 인바운드 차단
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+# 2) web: 클러스터 밖(NodePort)에서 8080
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-from-anywhere
+spec:
+  podSelector:
+    matchLabels: {tier: web}
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - {protocol: TCP, port: 8080}
+---
+# 3) was: web Pod에서만 8000
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: was-from-web
+spec:
+  podSelector:
+    matchLabels: {tier: was}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {tier: web}
+      ports:
+        - {protocol: TCP, port: 8000}
+---
+# 4) db: was Pod(앱 · initContainer migrate)에서만 5432
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-from-was
+spec:
+  podSelector:
+    matchLabels: {tier: db}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {tier: was}
+      ports:
+        - {protocol: TCP, port: 5432}

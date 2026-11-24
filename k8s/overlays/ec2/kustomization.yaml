@@ -1,0 +1,19 @@
+# ③ EC2 kubeadm 클러스터용: web은 NodePort 30080(외부 LB 없음), DB 볼륨은 local-path
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+patches:
+  - target: {kind: Service, name: web}
+    patch: |-
+      - op: add
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30080
+  - target: {kind: StatefulSet, name: db}
+    patch: |-
+      - op: add
+        path: /spec/volumeClaimTemplates/0/spec/storageClassName
+        value: local-path

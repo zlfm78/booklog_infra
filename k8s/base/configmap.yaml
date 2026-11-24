@@ -1,0 +1,11 @@
+# 비밀이 아닌 설정 (②의 compose environment 중 일반 값). 계정 · 비밀번호 · 키는 Secret
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: booklog-config
+data:
+  DB_HOST: db                 # db Service(헤드리스) 이름 → db-0 Pod IP
+  DB_PORT: "5432"
+  DB_NAME: booklog
+  DB_POOL_SIZE: "5"           # was Pod 2개 × 5 = 10 ≤ max_connections 100
+  JWT_EXPIRE_MINUTES: "60"

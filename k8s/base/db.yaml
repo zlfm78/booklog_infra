@@ -1,0 +1,74 @@
+# db: PostgreSQL 18.7 공식 이미지, StatefulSet 1개 + PVC (Pod를 지우고 다시 만들어도 같은 PVC를 붙임)
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+  labels: {app: db}
+spec:
+  clusterIP: None             # 헤드리스: StatefulSet Pod(db-0)의 고정 DNS 이름용. was는 db:5432로 접속
+  selector: {app: db}
+  ports:
+    - name: postgres
+      port: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db
+  labels: {app: db}
+spec:
+  serviceName: db
+  replicas: 1                 # PostgreSQL은 Pod를 늘려도 자동 복제되지 않음
+  selector:
+    matchLabels: {app: db}
+  template:
+    metadata:
+      labels: {app: db, tier: db}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999          # 이미지의 postgres 사용자 (entrypoint가 root가 아니면 그대로 initdb)
+        runAsGroup: 999
+        fsGroup: 999            # 볼륨 파일 그룹 → postgres가 쓸 수 있게
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: postgres
+          image: postgres:18.7
+          ports:
+            - {name: postgres, containerPort: 5432}
+          env:
+            - name: POSTGRES_DB
+              valueFrom: {configMapKeyRef: {name: booklog-config, key: DB_NAME}}
+            - name: POSTGRES_USER          # 빈 볼륨에서 처음 시작할 때만 관리 계정(슈퍼유저) 생성
+              valueFrom: {secretKeyRef: {name: booklog-db-admin, key: DB_ADMIN_USER}}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: booklog-db-admin, key: DB_ADMIN_PASSWORD}}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql}   # PG18 이미지의 VOLUME 경로 (PGDATA는 그 아래 18/docker)
+            - {name: run, mountPath: /var/run/postgresql}
+          readinessProbe:                  # 접속을 받을 수 있는가
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\" -h 127.0.0.1"]
+            periodSeconds: 5
+          livenessProbe:                   # 프로세스가 포트를 열고 있는가 (DB 부하로 재시작되지 않게 느슨하게)
+            tcpSocket: {port: 5432}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+      volumes:
+        - name: run
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: {storage: 2Gi}
+        # storageClassName은 overlay가 정함 (ec2: local-path, eks: EBS)

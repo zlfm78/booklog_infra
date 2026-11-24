@@ -1,0 +1,101 @@
+# was: FastAPI, 2개 (노드 분산). 시작 전에 initContainer가 마이그레이션 · 앱 계정 · 시드 (②의 migrate 서비스와 같은 명령)
+apiVersion: v1
+kind: Service
+metadata:
+  name: was
+  labels: {app: was}
+spec:
+  selector: {app: was}
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: was
+  labels: {app: was}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: was}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxSurge: 1, maxUnavailable: 0}   # 새 Pod가 Ready가 된 뒤에 옛 Pod를 내림
+  template:
+    metadata:
+      labels: {app: was, tier: was}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001                # 이미지의 USER와 같은 숫자 UID
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      topologySpreadConstraints:        # was 2개를 서로 다른 노드에
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app: was}
+      initContainers:
+        # 관리 계정으로 스키마 → 앱 계정 · 권한 → 시드. Pod 여러 개가 동시에 돌아도 advisory lock으로 한 번에 하나
+        - name: migrate
+          image: booklog-was
+          command: ["sh", "-c", "alembic upgrade head && python -m app.dbrole && python -m app.seed seed/catalog.yaml"]
+          envFrom:
+            - configMapRef: {name: booklog-config}
+          env:
+            - name: DB_USER
+              valueFrom: {secretKeyRef: {name: booklog-db-admin, key: DB_ADMIN_USER}}
+            - name: DB_PASSWORD
+              valueFrom: {secretKeyRef: {name: booklog-db-admin, key: DB_ADMIN_PASSWORD}}
+            - name: APP_DB_USER
+              valueFrom: {secretKeyRef: {name: booklog-app, key: DB_USER}}
+            - name: APP_DB_PASSWORD
+              valueFrom: {secretKeyRef: {name: booklog-app, key: DB_PASSWORD}}
+            - name: DEMO_PASSWORD
+              valueFrom: {secretKeyRef: {name: booklog-demo, key: DEMO_PASSWORD}}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 256Mi}
+      containers:
+        - name: was
+          image: booklog-was
+          ports:
+            - {name: http, containerPort: 8000}
+          envFrom:
+            - configMapRef: {name: booklog-config}
+          env:
+            # 앱 계정만 (관리 계정 정보는 was 컨테이너에 넣지 않음)
+            - name: DB_USER
+              valueFrom: {secretKeyRef: {name: booklog-app, key: DB_USER}}
+            - name: DB_PASSWORD
+              valueFrom: {secretKeyRef: {name: booklog-app, key: DB_PASSWORD}}
+            - name: JWT_SECRET            # 모든 was Pod가 같은 키 → 어느 Pod로 가도 로그인 유지
+              valueFrom: {secretKeyRef: {name: booklog-app, key: JWT_SECRET}}
+            - name: NODE_NAME             # /api/info의 node (Downward API)
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+          readinessProbe:                 # DB까지 연결되면 트래픽 받음
+            httpGet: {path: /api/health/ready, port: http}
+            periodSeconds: 5
+          livenessProbe:                  # 프로세스만 (DB 장애로 연쇄 재시작하지 않게)
+            httpGet: {path: /api/health/live, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}
