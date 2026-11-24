@@ -56,9 +56,14 @@ spec:
           readinessProbe:                 # 빌드 결과물(index.html)까지 제공되는가
             httpGet: {path: /, port: http}
             periodSeconds: 5
+          # 시작 확인: 성공할 때까지 liveness · readiness를 미룬다 (2초마다, 최대 30번 = 60초)
+          #   고정 initialDelaySeconds 대신 → 시작이 늦어져도 liveness가 일찍 죽여 재시작 반복(CrashLoopBackOff)이 되지 않게
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
           livenessProbe:                  # Nginx 프로세스만
             httpGet: {path: /healthz, port: http}
-            initialDelaySeconds: 5
             periodSeconds: 10
           resources:
             requests: {cpu: 50m, memory: 32Mi}

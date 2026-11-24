@@ -89,9 +89,16 @@ spec:
           readinessProbe:                 # DB까지 연결되면 트래픽 받음
             httpGet: {path: /api/health/ready, port: http}
             periodSeconds: 5
+          # 시작 확인: 성공할 때까지 liveness · readiness를 미룬다 (2초마다, 최대 30번 = 60초)
+          #   고정 initialDelaySeconds 대신 → 시작이 늦어져도 liveness가 일찍 죽여 재시작 반복(CrashLoopBackOff)이 되지 않게
+          #   DB를 보지 않는 /live로 확인 (DB가 늦게 준비돼도 컨테이너는 살려 두고 readiness로만 트래픽을 막음)
+          #   initContainer(migrate) 실패는 probe로 막을 수 없다 — 일반 initContainer에는 probe가 없음
+          startupProbe:
+            httpGet: {path: /api/health/live, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
           livenessProbe:                  # 프로세스만 (DB 장애로 연쇄 재시작하지 않게)
             httpGet: {path: /api/health/live, port: http}
-            initialDelaySeconds: 10
             periodSeconds: 10
           resources:
             requests: {cpu: 100m, memory: 128Mi}
