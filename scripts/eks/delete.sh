@@ -19,8 +19,13 @@ if aws eks describe-cluster --name $CLUSTER >/dev/null 2>&1 && [ -f "$KUBECONFIG
   k delete ingress --all -n booklog --ignore-not-found --wait=true
   [ "$VPC" != "None" ] && waitfor "ALB 삭제" 600 "aws elbv2 describe-load-balancers --query \"LoadBalancers[?VpcId=='$VPC'].LoadBalancerArn\" --output text"
   echo "== 2) namespace booklog 삭제 → PVC → EBS"
+  # 지우기 전에 PV가 가리키는 EBS 볼륨 ID를 받아 두고, 그 ID가 사라질 때까지 기다린다
+  VOLS=$(k get pv -o jsonpath='{range .items[?(@.spec.claimRef.namespace=="booklog")]}{.spec.csi.volumeHandle}{" "}{end}')
+  echo "PV의 EBS 볼륨: ${VOLS:-없음}"
   k delete namespace booklog --ignore-not-found --wait=true
-  waitfor "PVC 볼륨 삭제" 600 "aws ec2 describe-volumes --filters Name=tag:kubernetes.io/created-for/pvc/namespace,Values=booklog --query 'Volumes[].VolumeId' --output text"
+  for v in $VOLS; do
+    waitfor "EBS $v 삭제" 600 "aws ec2 describe-volumes --volume-ids $v --query 'Volumes[].VolumeId' --output text 2>/dev/null || true"
+  done
   echo "== 3) NodePool 삭제 → 앱 노드 종료"
   k delete nodepool booklog --ignore-not-found --wait=true || true
 fi
