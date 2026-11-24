@@ -22,7 +22,11 @@ fi
 show "EBS 볼륨" "$(aws ec2 describe-volumes --filters Name=tag-key,Values=kubernetes.io/created-for/pvc/name,ebs.csi.eks.amazonaws.com/cluster \
       --query 'Volumes[].[VolumeId,Size,State,Tags[?Key==`kubernetes.io/created-for/pvc/name`]|[0].Value]' --output text | tr '\t\n' ' ;')"
 show "EIP (Project 태그)" "$(aws ec2 describe-addresses --filters Name=tag:Project,Values=$PROJECT --query 'Addresses[].PublicIp' --output text)"
-show "IAM 역할" "$(for r in $CLUSTER_ROLE $NODE_ROLE; do aws iam get-role --role-name $r --query Role.RoleName --output text 2>/dev/null || true; done | tr '\n' ' ')"
+show "RDS" "$(aws rds describe-db-instances --db-instance-identifier $DB_ID --query 'DBInstances[0].[DBInstanceStatus,DBInstanceClass,MultiAZ,AvailabilityZone,SecondaryAvailabilityZone]' --output text 2>/dev/null | tr '\t' ' ' || true)"
+show "RDS Proxy" "$(aws rds describe-db-proxies --db-proxy-name $DB_ID --query 'DBProxies[0].[Status,DefaultAuthScheme]' --output text 2>/dev/null | tr '\t' ' ' || true)"
+show "DB 서브넷 그룹" "$(aws rds describe-db-subnet-groups --db-subnet-group-name $DB_ID --query 'DBSubnetGroups[0].DBSubnetGroupName' --output text 2>/dev/null || true)"
+show "Secrets Manager" "$(aws secretsmanager list-secrets --filters Key=name,Values=$APP_SECRET,rds! --query 'SecretList[].Name' --output text 2>/dev/null | tr '\t' ' ')"
+show "IAM 역할" "$(for r in $CLUSTER_ROLE $NODE_ROLE $WAS_ROLE $PROXY_ROLE; do aws iam get-role --role-name $r --query Role.RoleName --output text 2>/dev/null || true; done | tr '\n' ' ')"
 show "ECR 저장소 (이미지 수)" "$(for r in "${ECR_REPOS[@]}"; do aws ecr describe-images --repository-name $r --query "length(imageDetails)" --output text 2>/dev/null | sed "s/^/$r:/" || true; done | tr '\n' ' ')"
 
 if [ -f "$KUBECONFIG_EKS" ] && aws eks describe-cluster --name $CLUSTER >/dev/null 2>&1; then

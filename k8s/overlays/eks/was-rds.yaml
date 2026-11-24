@@ -1,0 +1,54 @@
+# was를 RDS에 맞게 (④만). 전략적 병합 패치: env는 name으로 합쳐지고, $patch: delete는 그 항목을 지운다
+#   migrate(initContainer): 관리 계정으로 RDS에 직접(DB_ADMIN_HOST), TLS는 RDS CA 번들로 검증
+#     앱 계정은 비밀번호 없이 IAM 전용으로 만든다(APP_DB_IAM=true → rds_iam)
+#   was: 앱 계정으로 Proxy에(DB_HOST), 비밀번호 대신 IAM 토큰(DB_IAM_AUTH=true, was 1.2.0)
+#     Proxy 인증서는 ACM 발급 → 이미지의 시스템 CA 목록으로 검증
+#   secrets-store 볼륨: 마운트해야 CSI가 K8s Secret(booklog-db-admin · booklog-app · booklog-demo)을 만들고 갱신한다
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: was
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: migrate
+          env:
+            - name: DB_HOST
+              valueFrom: {configMapKeyRef: {name: booklog-config, key: DB_ADMIN_HOST}}
+            - name: APP_DB_USER
+              valueFrom: {configMapKeyRef: {name: booklog-config, key: APP_DB_USER}}
+            - name: APP_DB_PASSWORD
+              $patch: delete
+            - name: APP_DB_IAM
+              value: "true"
+            - name: PGSSLMODE
+              value: verify-full
+            - name: PGSSLROOTCERT
+              value: /certs/rds/bundle.pem
+          volumeMounts:
+            - {name: rds-ca, mountPath: /certs/rds, readOnly: true}
+            - {name: secrets-store, mountPath: /mnt/secrets, readOnly: true}
+      containers:
+        - name: was
+          env:
+            - name: DB_USER
+              valueFrom: {configMapKeyRef: {name: booklog-config, key: APP_DB_USER}}
+            - name: DB_PASSWORD
+              $patch: delete
+            - name: DB_IAM_AUTH
+              value: "true"
+            - name: PGSSLMODE
+              value: verify-full
+            - name: PGSSLROOTCERT
+              value: /etc/ssl/certs/ca-certificates.crt
+          volumeMounts:
+            - {name: secrets-store, mountPath: /mnt/secrets, readOnly: true}
+      volumes:
+        - name: rds-ca
+          configMap: {name: rds-ca}
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes: {secretProviderClass: booklog}

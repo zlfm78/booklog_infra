@@ -1,0 +1,61 @@
+# ④ 나가는 방향 허용 목록 (VPC CNI Network Policy Controller가 적용)
+#   DB가 클러스터 밖(RDS)이라 "db Pod로 들어오는 것"을 막을 수 없다 → 각 Pod가 "어디로 나갈 수 있는지"를 정한다
+#   AWS 쪽: RDS · Proxy 보안 그룹은 노드(클러스터 보안 그룹)에서만 5432 (scripts/eks/rds.sh)
+#   클러스터 안: 그 노드의 Pod 중 was만 5432로 나갈 수 있음
+# 1) 기본: 모든 Pod의 나가는 트래픽 차단
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+---
+# 2) 모든 Pod: DNS (Auto Mode의 DNS는 노드에서 동작 → 대상을 Pod로 고르지 않고 포트만)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: egress-dns
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+# 3) web → was 8000 (Nginx 리버스 프록시)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-egress-was
+spec:
+  podSelector:
+    matchLabels: {tier: web}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: {tier: was}
+      ports:
+        - {protocol: TCP, port: 8000}
+---
+# 4) was → RDS Proxy · RDS 5432 (프라이빗 서브넷 2a · 2c), Pod Identity Agent(노드의 169.254.170.23:80, IAM 자격 증명)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: was-egress-db
+spec:
+  podSelector:
+    matchLabels: {tier: was}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock: {cidr: 10.1.10.0/24}
+        - ipBlock: {cidr: 10.1.11.0/24}
+      ports:
+        - {protocol: TCP, port: 5432}
+    - to:
+        - ipBlock: {cidr: 169.254.170.23/32}
+      ports:
+        - {protocol: TCP, port: 80}

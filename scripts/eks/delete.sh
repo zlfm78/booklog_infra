@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ④ 자원 삭제 (Project=booklog-eks · 클러스터 booklog만). 순서가 중요하다:
-#   1) Ingress → ALB 삭제 (Auto Mode가 지움)   2) namespace booklog → PVC → EBS 삭제 (reclaimPolicy: Delete)
-#   3) NodePool → 앱 노드 종료   4) 클러스터   5) NAT   6) 보안 그룹 · 라우팅 · IGW · 서브넷 · VPC   7) IAM 역할
+#   1) Ingress → ALB 삭제 (Auto Mode가 지움)   2) namespace booklog → PVC → EBS 삭제 (reclaimPolicy: Delete, RDS 전환 전 구성)
+#   3) NodePool → 앱 노드 종료   3-1) RDS Proxy · RDS 삭제 시작   4) 클러스터   4-1) RDS 완료 대기 · DB 서브넷 그룹 · 앱 비밀
+#   5) NAT   6) 보안 그룹(RDS · Proxy 포함) · 라우팅 · IGW · 서브넷 · VPC   7) IAM 역할 4개
 #   클러스터를 먼저 지우면 ALB · EBS를 지워 줄 컨트롤러가 없어져 남을 수 있음 → 1) 2)를 먼저
 # 사용: scripts/eks/delete.sh yes        (ECR은 남김 — 다음 날 클러스터만 다시 만들 때)
 #       scripts/eks/delete.sh yes all    (ECR까지 삭제 — 발표 후)
@@ -30,12 +31,26 @@ if aws eks describe-cluster --name $CLUSTER >/dev/null 2>&1 && [ -f "$KUBECONFIG
   k delete nodepool booklog --ignore-not-found --wait=true || true
 fi
 
+echo "== 3-1) RDS Proxy · RDS 삭제 시작 (스냅샷 · 자동 백업 남기지 않음 — 데이터는 시연용). 클러스터 삭제와 함께 진행"
+aws rds delete-db-proxy --db-proxy-name $DB_ID >/dev/null 2>&1 && echo "Proxy $DB_ID 삭제 시작" || true
+aws rds delete-db-instance --db-instance-identifier $DB_ID --skip-final-snapshot --delete-automated-backups \
+  --query 'DBInstance.DBInstanceStatus' --output text 2>/dev/null || true
+
 if aws eks describe-cluster --name $CLUSTER >/dev/null 2>&1; then
-  echo "== 4) 클러스터 삭제 (보통 5~10분)"
+  echo "== 4) 클러스터 삭제 (보통 5~10분) — Pod Identity 연결 · CSI 애드온도 함께 삭제됨"
   aws eks delete-cluster --name $CLUSTER --query 'cluster.status' --output text
   aws eks wait cluster-deleted --name $CLUSTER
 fi
 rm -f "$KUBECONFIG_EKS"
+
+echo "== 4-1) RDS · Proxy 삭제 완료 대기 → DB 서브넷 그룹 · 앱 비밀 (RDS 관리 비밀은 인스턴스와 함께 삭제됨)"
+waitfor "Proxy 삭제" 900 "aws rds describe-db-proxies --db-proxy-name $DB_ID --query 'DBProxies[].DBProxyName' --output text 2>/dev/null || true"
+if aws rds describe-db-instances --db-instance-identifier $DB_ID >/dev/null 2>&1; then
+  aws rds wait db-instance-deleted --db-instance-identifier $DB_ID && echo "RDS $DB_ID 삭제 완료"
+fi
+aws rds delete-db-subnet-group --db-subnet-group-name $DB_ID 2>/dev/null && echo "DB 서브넷 그룹 $DB_ID 삭제" || true
+# 앱 비밀: 복구 대기 기간 없이 즉시 삭제 (같은 이름으로 다시 만들 수 있게. 값은 .env에 있음)
+aws secretsmanager delete-secret --secret-id $APP_SECRET --force-delete-without-recovery >/dev/null 2>&1 && echo "비밀 $APP_SECRET 삭제" || true
 
 if [ "$VPC" != "None" ]; then
   IDS=$(aws ec2 describe-instances --include-managed-resources --filters Name=vpc-id,Values=$VPC Name=instance-state-name,Values=pending,running,stopping,stopped --query 'Reservations[].Instances[].InstanceId' --output text)
@@ -58,9 +73,10 @@ if [ "$VPC" != "None" ]; then
 fi
 
 echo "== 7) IAM 역할"
-for r in $CLUSTER_ROLE $NODE_ROLE; do
+for r in $CLUSTER_ROLE $NODE_ROLE $WAS_ROLE $PROXY_ROLE; do
   aws iam get-role --role-name $r >/dev/null 2>&1 || continue
   for p in $(aws iam list-attached-role-policies --role-name $r --query 'AttachedPolicies[].PolicyArn' --output text); do aws iam detach-role-policy --role-name $r --policy-arn $p; done
+  for p in $(aws iam list-role-policies --role-name $r --query 'PolicyNames[]' --output text); do aws iam delete-role-policy --role-name $r --policy-name $p; done
   aws iam delete-role --role-name $r && echo "역할 $r 삭제"
 done
 

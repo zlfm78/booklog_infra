@@ -22,7 +22,7 @@ scripts/
 ├── scenario.sh     모든 단계 공통 테스트 시나리오 (write · verify)
 ├── aws/            ③ EC2 kubeadm 클러스터용 AWS 자원 (태그 Project=booklog)
 ├── k8s/            ③ 노드 준비 · Secret · SSH 터널
-└── eks/            ④ EKS Auto Mode: ecr.sh → create.sh → deploy.sh, status.sh · delete.sh (태그 Project=booklog-eks)
+└── eks/            ④ EKS Auto Mode: ecr.sh → create.sh → rds.sh(RDS Multi-AZ · Proxy · Secrets Manager · CSI) → deploy.sh, status.sh · delete.sh (태그 Project=booklog-eks)
 k8s/                ③부터: Kustomize base + overlays/ec2, overlays/eks
 ├── cluster/        ③ 클러스터 구성 요소 (kubeadm 설정 · Calico · local-path · metrics-server)
 └── cluster-eks/    ④ NodeClass · NodePool · StorageClass · IngressClass · NetworkPolicy 컨트롤러

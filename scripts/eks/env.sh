@@ -22,9 +22,26 @@ CLUSTER_ROLE=booklog-eks-cluster-role
 NODE_ROLE=booklog-eks-node-role
 ECR_REPOS=(booklog-was booklog-web)
 # Docker Hub → ECR로 옮길 이미지 (태그 = 버전, 같은 다이제스트로 복사)
-IMAGES=("booklog-was 1.0.1" "booklog-was 1.1.0" "booklog-web 1.0.0")
+IMAGES=("booklog-was 1.0.1" "booklog-was 1.1.0" "booklog-was 1.2.0" "booklog-web 1.0.0")
 DOCKERHUB=jeonghyeonseong
 KUBECONFIG_EKS="$HOME/.kube/booklog-eks"   # ③ 설정과 섞이지 않게 따로
+
+# RDS (scripts/eks/rds.sh) — Multi-AZ PostgreSQL + RDS Proxy(IAM 인증) + Secrets Manager
+DB_ID=booklog                      # RDS 인스턴스 · Proxy · 서브넷 그룹 이름
+DB_CLASS=db.t4g.micro
+DB_ENGINE_VERSION=18.6             # 서울 RDS의 18 최신 (이미지는 18.7 — RDS에는 아직 없음, 2026-11-24 CLI 확인)
+DB_NAME=booklog
+DB_ADMIN=booklog_admin             # 관리 계정 (비밀번호는 RDS가 만들어 Secrets Manager에 두고 순환)
+DB_APP=booklog_app                 # 앱 계정 (비밀번호 없음, IAM 인증 전용 — migrate의 app.dbrole이 만듦)
+APP_SECRET=booklog-eks/app         # JWT_SECRET · DEMO_PASSWORD (.env 값)
+WAS_ROLE=booklog-eks-was-role      # was Pod(Pod Identity): Proxy 접속(rds-db:connect) + 비밀 읽기
+PROXY_ROLE=booklog-eks-proxy-role  # Proxy → RDS 접속(rds-db:connect)
+RDS_CA_URL=https://truststore.pki.rds.amazonaws.com/ap-northeast-2/ap-northeast-2-bundle.pem   # migrate → RDS 직접 TLS 검증용 (공개 인증서)
+
+db_endpoint()    { aws rds describe-db-instances --db-instance-identifier $DB_ID --query 'DBInstances[0].Endpoint.Address' --output text 2>/dev/null; }
+proxy_endpoint() { aws rds describe-db-proxies --db-proxy-name $DB_ID --query 'DBProxies[0].Endpoint' --output text 2>/dev/null; }
+admin_secret_arn() { aws rds describe-db-instances --db-instance-identifier $DB_ID --query 'DBInstances[0].MasterUserSecret.SecretArn' --output text 2>/dev/null; }
+app_secret_arn() { aws secretsmanager describe-secret --secret-id $APP_SECRET --query ARN --output text 2>/dev/null; }
 
 tagspec() { echo "ResourceType=$1,Tags=[{Key=Project,Value=$PROJECT},{Key=Name,Value=$2}]"; }
 
