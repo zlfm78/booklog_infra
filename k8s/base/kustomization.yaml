@@ -13,6 +13,8 @@ resources:
   - was.yaml
   - web.yaml
   - networkpolicy.yaml
+  - serviceaccounts.yaml
+  - pdb.yaml
 # Secret(booklog-db-admin · booklog-app · booklog-demo)은 저장소에 두지 않는다.
 #   scripts/k8s/secrets.sh가 .env 값으로 클러스터에 직접 만든다 (키 목록: secret.example.yaml)
 images:

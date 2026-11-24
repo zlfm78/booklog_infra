@@ -27,6 +27,7 @@ spec:
     metadata:
       labels: {app: web, tier: web}
     spec:
+      serviceAccountName: web          # 전용 SA (serviceaccounts.yaml, API 토큰 마운트 없음)
       securityContext:
         runAsNonRoot: true
         runAsUser: 101                  # nginx-unprivileged 이미지의 nginx 사용자

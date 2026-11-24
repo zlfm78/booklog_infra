@@ -1,0 +1,20 @@
+# PodDisruptionBudget — 노드 교체 · drain 중에도 web · was는 최소 1개 유지
+#   ④ Auto Mode는 노드를 스스로 교체한다(336시간 만료, 새 AMI drift, 통합). "EKS Auto Mode observes pod disruption budgets when upgrading nodes"
+#   db는 1개뿐이라 minAvailable: 1이면 노드 교체 자체가 막히므로 두지 않는다
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: web}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: was
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: was}

@@ -25,6 +25,7 @@ spec:
     metadata:
       labels: {app: db, tier: db}
     spec:
+      serviceAccountName: db          # 전용 SA (serviceaccounts.yaml, API 토큰 마운트 없음)
       securityContext:
         runAsNonRoot: true
         runAsUser: 999          # 이미지의 postgres 사용자 (entrypoint가 root가 아니면 그대로 initdb)
