@@ -1,0 +1,19 @@
+# ④ 외부 입구: Ingress → Auto Mode가 ALB를 만든다 (IngressClass alb = k8s/cluster-eks/ingressclass.yaml)
+#   ALB → web Pod IP로 직접 (targetType 기본값 ip). HTTP 80만 (HTTPS는 하지 않음 — 평문 전송은 문서에 한계로 적음)
+#   Ingress를 지우면 ALB도 지워진다 (삭제 순서: Ingress → PVC → 클러스터)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 80

@@ -19,8 +19,13 @@
 .env.example        환경 변수 키 목록 (값 없음). cp .env.example .env 후 채움 — .env는 커밋하지 않음
 compose.yaml        ② db · migrate · was · web (IMAGE_PREFIX=jeonghyeonseong/ 이면 Docker Hub 이미지)
 scripts/
-└── scenario.sh     모든 단계 공통 테스트 시나리오 (write · verify)
+├── scenario.sh     모든 단계 공통 테스트 시나리오 (write · verify)
+├── aws/            ③ EC2 kubeadm 클러스터용 AWS 자원 (태그 Project=booklog)
+├── k8s/            ③ 노드 준비 · Secret · SSH 터널
+└── eks/            ④ EKS Auto Mode: ecr.sh → create.sh → deploy.sh, status.sh · delete.sh (태그 Project=booklog-eks)
 k8s/                ③부터: Kustomize base + overlays/ec2, overlays/eks
+├── cluster/        ③ 클러스터 구성 요소 (kubeadm 설정 · Calico · local-path · metrics-server)
+└── cluster-eks/    ④ NodeClass · NodePool · StorageClass · IngressClass · NetworkPolicy 컨트롤러
 ```
 
 단계별 실행 절차 · 결과 · 화면은 제출 문서(Notion)에 정리하고, 이 저장소에는 실행 · 배포에 필요한 파일만 둡니다.

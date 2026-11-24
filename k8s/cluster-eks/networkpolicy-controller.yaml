@@ -1,0 +1,11 @@
+---
+# ④ NetworkPolicy 적용 켜기 — Auto Mode는 이 ConfigMap으로 Network Policy Controller를 켜야
+#   base/networkpolicy.yaml(web ← 어디서나, was ← web, db ← was)이 실제로 적용된다 (EKS auto-net-pol)
+#   ③에서는 Calico가 같은 정책을 적용했다
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: amazon-vpc-cni
+  namespace: kube-system
+data:
+  enable-network-policy-controller: "true"

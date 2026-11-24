@@ -1,0 +1,53 @@
+# ④ EKS Auto Mode용: web은 ALB(Ingress) 뒤의 ClusterIP(base 그대로), 이미지는 ECR, DB 볼륨은 EBS(booklog-gp3)
+#   ECR_REGISTRY는 자리표시자 — scripts/eks/deploy.sh가 적용할 때 실제 주소로 바꾼다 (계정 ID를 저장소에 남기지 않음)
+#   클러스터 공통 설정(NodePool · StorageClass · IngressClass)은 k8s/cluster-eks
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# overlay에서 추가한 리소스(ingress.yaml)에도 네임스페이스를 붙인다 (base의 namespace는 base 리소스에만 적용됨)
+namespace: booklog
+resources:
+  - ../../base
+  - ingress.yaml
+# 배포할 버전 (③ overlays/ec2와 같은 조합: was 1.1.0 · web 1.0.0). ECR 태그는 IMMUTABLE
+images:
+  - name: jeonghyeonseong/booklog-was
+    newName: ECR_REGISTRY/booklog-was
+    newTag: 1.1.0
+  - name: jeonghyeonseong/booklog-web
+    newName: ECR_REGISTRY/booklog-web
+    newTag: 1.0.0
+patches:
+  # DB 볼륨: EBS gp3 (③은 local-path)
+  - target: {kind: StatefulSet, name: db}
+    patch: |-
+      - op: add
+        path: /spec/volumeClaimTemplates/0/spec/storageClassName
+        value: booklog-gp3
+  # web · was를 가용 영역(2a · 2c)에 1개씩 강제 분산 (④만 — ③은 AZ가 하나)
+  #   base의 노드 단위 ScheduleAnyway만으로는 Auto Mode가 노드 1대에 몰아 담음(2026-11-24 배포에서 확인)
+  #   DoNotSchedule: 조건을 못 지키면 Pending → Auto Mode가 빈 AZ에 노드를 새로 만든다
+  #   minDomains가 없으면 스케줄러는 노드가 있는 AZ(2c)만 센다 → 2c 하나에 몰려도 "분산됨"으로 판단 (2026-11-24 적용에서 확인)
+  - target: {kind: Deployment, name: web}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/topologySpreadConstraints/-
+        value:
+          maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          minDomains: 2   # 노드가 있는 AZ가 1개뿐이어도 "AZ 2개"로 계산 → 두 번째 Pod는 Pending → Auto Mode가 빈 AZ에 노드 생성
+          labelSelector:
+            matchLabels: {app: web}
+          matchLabelKeys: [pod-template-hash]   # 롤링 중에는 새 버전 Pod끼리만 세어 분산 (옛 Pod 때문에 한쪽에 몰리지 않게)
+  - target: {kind: Deployment, name: was}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/topologySpreadConstraints/-
+        value:
+          maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          minDomains: 2   # 노드가 있는 AZ가 1개뿐이어도 "AZ 2개"로 계산 → 두 번째 Pod는 Pending → Auto Mode가 빈 AZ에 노드 생성
+          labelSelector:
+            matchLabels: {app: was}
+          matchLabelKeys: [pod-template-hash]   # 롤링 중에는 새 버전 Pod끼리만 세어 분산 (옛 Pod 때문에 한쪽에 몰리지 않게)

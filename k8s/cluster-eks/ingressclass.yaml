@@ -1,0 +1,23 @@
+---
+# ④ ALB 설정 — Auto Mode는 IngressClass의 주석이 아니라 IngressClassParams로 ALB를 설정한다
+apiVersion: eks.amazonaws.com/v1
+kind: IngressClassParams
+metadata:
+  name: alb
+spec:
+  scheme: internet-facing       # 인터넷에서 접속 (전체 공개, HTTP 80)
+  subnets:
+    matchTags:                  # 퍼블릭 서브넷 2개(2a · 2c)에 ALB
+      - key: kubernetes.io/role/elb
+        values: ["1"]
+---
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: alb
+spec:
+  controller: eks.amazonaws.com/alb
+  parameters:
+    apiGroup: eks.amazonaws.com
+    kind: IngressClassParams
+    name: alb
