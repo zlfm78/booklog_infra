@@ -22,7 +22,7 @@ CLUSTER_ROLE=booklog-eks-cluster-role
 NODE_ROLE=booklog-eks-node-role
 ECR_REPOS=(booklog-was booklog-web)
 # Docker Hub → ECR로 옮길 이미지 (태그 = 버전, 같은 다이제스트로 복사)
-IMAGES=("booklog-was 1.0.1" "booklog-was 1.1.0" "booklog-was 1.2.0" "booklog-web 1.0.0")
+IMAGES=("booklog-was 1.0.1" "booklog-was 1.1.0" "booklog-was 1.2.0" "booklog-was 1.2.1" "booklog-web 1.0.0")
 DOCKERHUB=jeonghyeonseong
 KUBECONFIG_EKS="$HOME/.kube/booklog-eks"   # ③ 설정과 섞이지 않게 따로
 

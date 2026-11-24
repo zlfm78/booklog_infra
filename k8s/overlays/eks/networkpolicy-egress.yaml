@@ -25,6 +25,9 @@ spec:
         - {protocol: TCP, port: 53}
 ---
 # 3) web → was 8000 (Nginx 리버스 프록시)
+#   VPC CNI는 나가는 방향 정책을 Service IP → Pod IP 변환(DNAT) 전에 검사한다.
+#   podSelector만 쓰면 was Pod IP는 허용되지만 Nginx가 보내는 Service IP(ClusterIP)는 막힘
+#   (2026-11-24 배포에서 확인: Pod IP 200, Service IP timeout → 504) → Service 대역도 8000만 허용
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -37,6 +40,7 @@ spec:
     - to:
         - podSelector:
             matchLabels: {tier: was}
+        - ipBlock: {cidr: 172.20.0.0/16}   # 클러스터 Service 대역 (describe-cluster serviceIpv4Cidr)
       ports:
         - {protocol: TCP, port: 8000}
 ---

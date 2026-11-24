@@ -16,8 +16,8 @@ spec:
           env:
             - name: DB_HOST
               valueFrom: {configMapKeyRef: {name: booklog-config, key: DB_ADMIN_HOST}}
-            - name: APP_DB_USER
-              valueFrom: {configMapKeyRef: {name: booklog-config, key: APP_DB_USER}}
+            - name: APP_DB_USER       # base는 Secret에서 읽음 → null로 지우고 ConfigMap에서 (둘 다 있으면 API 서버가 거부)
+              valueFrom: {configMapKeyRef: {name: booklog-config, key: APP_DB_USER}, secretKeyRef: null}
             - name: APP_DB_PASSWORD
               $patch: delete
             - name: APP_DB_IAM
@@ -32,8 +32,8 @@ spec:
       containers:
         - name: was
           env:
-            - name: DB_USER
-              valueFrom: {configMapKeyRef: {name: booklog-config, key: APP_DB_USER}}
+            - name: DB_USER           # base는 Secret에서 읽음 → null로 지우고 ConfigMap에서
+              valueFrom: {configMapKeyRef: {name: booklog-config, key: APP_DB_USER}, secretKeyRef: null}
             - name: DB_PASSWORD
               $patch: delete
             - name: DB_IAM_AUTH

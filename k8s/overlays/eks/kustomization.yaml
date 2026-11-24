@@ -11,11 +11,11 @@ resources:
   - ingress.yaml
   - secretproviderclass.yaml
   - networkpolicy-egress.yaml
-# was 1.2.0: IAM 토큰 접속(DB_IAM_AUTH) · 앱 계정 IAM 전용(APP_DB_IAM). ECR 태그는 IMMUTABLE
+# was 1.2.1(1.2.0 + RDS에서 ALTER ROLE 수정): IAM 토큰 접속(DB_IAM_AUTH) · 앱 계정 IAM 전용(APP_DB_IAM). ECR 태그는 IMMUTABLE
 images:
   - name: jeonghyeonseong/booklog-was
     newName: ECR_REGISTRY/booklog-was
-    newTag: 1.2.0
+    newTag: 1.2.1
   - name: jeonghyeonseong/booklog-web
     newName: ECR_REGISTRY/booklog-web
     newTag: 1.0.0
